@@ -1,0 +1,63 @@
+#!/usr/bin/env python2
+
+import numpy as np
+from PySide.QtGui import QPixmap, QApplication, QImage
+from PySide.QtCore import QBuffer, QIODevice
+import sys
+
+import rospy
+from cv_bridge import CvBridge
+from sensor_msgs.msg import Image
+
+# adapted from
+# http://stackoverflow.com/a/7711106
+def captureScreenshot(window_id=None):
+    buffer = QBuffer()
+    buffer.open(QIODevice.ReadWrite)
+    if window_id is None:
+        window_id = QApplication.desktop().winId()
+    image = QPixmap.grabWindow(window_id).toImage()
+    assert image.format() == QImage.Format.Format_RGB32
+    image = np.array(image.bits()).reshape((image.height(), image.width(), 4)) # rgba
+    return image, window_id
+
+app = QApplication(sys.argv)
+bridge = CvBridge()
+rospy.init_node('screencaster')
+
+# parameters
+no_alpha = rospy.get_param('~no_alpha', True)
+rate = rospy.get_param('~rate', 15.0)
+frame_id = rospy.get_param('~frame_id', 'screen')
+topic = rospy.get_param('~topic', 'screen')
+
+rospy.loginfo("Parameters:")
+rospy.loginfo("  _no_alpha: %d", no_alpha)
+rospy.loginfo("  _rate:     %f", rate)
+rospy.loginfo("  _frame_id: %s", frame_id)
+rospy.loginfo("  _topic:    %s", topic)
+
+pub = rospy.Publisher(topic, Image, queue_size=1)
+
+seq = 0
+r = rospy.Rate(rate)
+while not rospy.is_shutdown():
+    if pub.get_num_connections() == 0:
+        r.sleep()
+        continue
+
+    screen_content, window_id = captureScreenshot()
+    encoding = 'bgra8'
+    if no_alpha:
+        screen_content = screen_content[:,:,0:3]
+        encoding = 'bgr8'
+    img = bridge.cv2_to_imgmsg(screen_content)
+    # fix encoding (img.encoding 8UC4)
+    img.encoding = encoding
+    img.header.stamp = rospy.Time.now()
+    img.header.seq = seq    
+    img.header.frame_id = frame_id
+    seq += 1
+    
+    pub.publish(img)
+    r.sleep()    
