@@ -4,6 +4,7 @@ ros node which publishes the whole X screen on an Image topic.
 ## Build
     cd ~/catkin_ws/src
     git clone https://github.com/herr-biber/ros_screencast
+    pip install -r ros_screencast/requirements.txt --user
     cd ~/catkin_ws
     catkin_make install
   
